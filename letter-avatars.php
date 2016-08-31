@@ -25,19 +25,21 @@ class LetterAvatars {
 
 	public function generate_default_avatar( $user_id ) {
 		$base_avatar_url = $this->get_raw_avatar_url( $user_id );
-		$user_name = $this->get_user_data( $user_id )['user_name'];
-		$base_image = imagecreatefrompng( $base_avatar_url );
-		imagefilter( $base_image, IMG_FILTER_COLORIZE, rand( 0, 255 ), rand( 0, 255 ), rand( 0, 255 ) );
+		$user_name       = $this->get_user_data( $user_id )['user_name'];
+		$base_image      = imagecreatefrompng( $base_avatar_url );
+		imagefilter( $base_image, IMG_FILTER_COLORIZE, rand( 100, 255 ), rand( 100, 255 ), rand( 100, 255 ) );
 		imagepng( $base_image, plugin_dir_path( __FILE__ ) . "assets/user-avatars/{$user_name}.png" );
 		imagedestroy( $base_image );
 	}
 
 	protected function get_user_data( $user_id ) {
-		$user_data              = [];
-		$raw_data               = get_userdata( $user_id );
-		$user_data['id']        = $raw_data->ID;
-		$user_data['email']     = $raw_data->user_email;
-		$user_data['user_name'] = $raw_data->user_login;
+		$user_data = [];
+		$raw_data  = get_userdata( $user_id );
+		if ( $raw_data ) {
+			$user_data['id']        = $raw_data->ID;
+			$user_data['email']     = $raw_data->user_email;
+			$user_data['user_name'] = $raw_data->user_login;
+		}
 
 		return $user_data;
 	}
@@ -54,20 +56,14 @@ class LetterAvatars {
 		return $letter . '.png';
 	}
 
-	protected function get_user_email_hash( $id_or_email ) {
-		if ( is_email( $id_or_email ) ) {
-
-			return md5( strtolower( trim( $id_or_email ) ) );
-		} else {
-
-			$user_data = $this->get_user_data( $id_or_email );
+	protected function get_user_email_hash( $id ) {
+			$user_data = $this->get_user_data( $id );
 
 			return md5( strtolower( trim( $user_data['email'] ) ) );
-		}
 	}
 
-	protected function get_gravatar_url( $id_or_email ) {
-		$email_hash   = $this->get_user_email_hash( $id_or_email );
+	protected function get_gravatar_url( $id ) {
+		$email_hash   = $this->get_user_email_hash( $id );
 		$gravatar_url = "https://www.gravatar.com/avatar/{$email_hash}";
 
 		return $gravatar_url;
@@ -79,15 +75,28 @@ class LetterAvatars {
 		return plugins_url( "assets/{$filename}", __FILE__ );
 	}
 
-	protected function get_user_avatar( $id_or_email ) {
-		$user_name = $this->get_user_data( $id_or_email )['user_name'];
-		$filename = $user_name . '.png';
+	protected function get_user_avatar( $id ) {
+		$user_name = $this->get_user_data( $id )['user_name'];
+		$filename  = $user_name . '.png';
 
 		return plugins_url( "assets/user-avatars/{$filename}", __FILE__ );
 	}
 
 	protected function generate_image_url( $image_name ) {
 		return plugins_url( "assets/{$image_name}", __FILE__ );
+	}
+
+	protected function get_id( $id_or_email ) {
+		if ( is_email( $id_or_email ) ) {
+			$user = get_user_by( 'email', $id_or_email );
+			$id = $user->ID;
+		} elseif ( is_a( $id_or_email, '\WP_User' ) ) {
+			$id = $id_or_email->ID;
+		} else {
+			$id = $id_or_email;
+		}
+
+		return $id;
 	}
 
 	function get_avatar_letter_or_gravatar( $avatar, $id_or_email, $size = 96, $default = '', $alt = '', $args = null ) {
@@ -106,6 +115,8 @@ class LetterAvatars {
 			'extra_attr'    => '',
 		);
 
+		$id = $this->get_id( $id_or_email );
+
 		if ( empty( $args ) ) {
 			$args = array();
 		}
@@ -113,7 +124,7 @@ class LetterAvatars {
 		$args['size']    = (int) $size;
 		$args['default'] = $default;
 //		$args['default'] = $this->get_raw_avatar_url( $id_or_email );
-		$arg['alt']     = $alt;
+		$arg['alt'] = $alt;
 
 		$args = wp_parse_args( $args, $defaults );
 
@@ -136,10 +147,10 @@ class LetterAvatars {
 		 *
 		 * @since 4.2.0
 		 *
-		 * @param string $avatar      HTML for the user's avatar. Default null.
-		 * @param mixed  $id_or_email The Gravatar to retrieve. Accepts a user_id, gravatar md5 hash,
+		 * @param string $avatar HTML for the user's avatar. Default null.
+		 * @param mixed $id_or_email The Gravatar to retrieve. Accepts a user_id, gravatar md5 hash,
 		 *                            user email, WP_User object, WP_Post object, or WP_Comment object.
-		 * @param array  $args        Arguments passed to get_avatar_url(), after processing.
+		 * @param array $args Arguments passed to get_avatar_url(), after processing.
 		 */
 		$avatar = apply_filters( 'pre_get_avatar', null, $id_or_email, $args );
 
@@ -153,13 +164,13 @@ class LetterAvatars {
 			return false;
 		}
 
-		$url2x = get_avatar_url( $id_or_email, array_merge( $args, array( 'size' => $args['size'] * 2 ) ) );
+//		$url2x = get_avatar_url( $id_or_email, array_merge( $args, array( 'size' => $args['size'] * 2 ) ) );
 		$args['force_default'] = true;
 
-		$args = get_avatar_data( $id_or_email, $args );
+		$args = get_avatar_data( $id, $args );
 
 //		$url = $args['url'];
-		$url = $this->get_user_avatar( $id_or_email );
+		$url = $this->get_user_avatar( $id );
 
 		if ( ! $url || is_wp_error( $url ) ) {
 			return false;
@@ -180,10 +191,9 @@ class LetterAvatars {
 		}
 
 		$avatar = sprintf(
-			"<img alt='%s' src='%s' srcset='%s' class='%s' height='%d' width='%d' %s/>",
+			"<img alt='%s' src='%s' class='%s' height='%d' width='%d' %s/>",
 			esc_attr( $args['alt'] ),
 			esc_url( $url ),
-			esc_attr( "$url2x 2x" ),
 			esc_attr( join( ' ', $class ) ),
 			(int) $args['height'],
 			(int) $args['width'],
@@ -196,13 +206,13 @@ class LetterAvatars {
 		 * @since 2.5.0
 		 * @since 4.2.0 The `$args` parameter was added.
 		 *
-		 * @param string $avatar      &lt;img&gt; tag for the user's avatar.
-		 * @param mixed  $id_or_email The Gravatar to retrieve. Accepts a user_id, gravatar md5 hash,
+		 * @param string $avatar &lt;img&gt; tag for the user's avatar.
+		 * @param mixed $id_or_email The Gravatar to retrieve. Accepts a user_id, gravatar md5 hash,
 		 *                            user email, WP_User object, WP_Post object, or WP_Comment object.
-		 * @param int    $size        Square avatar width and height in pixels to retrieve.
-		 * @param string $alt         Alternative text to use in the avatar image tag.
+		 * @param int $size Square avatar width and height in pixels to retrieve.
+		 * @param string $alt Alternative text to use in the avatar image tag.
 		 *                                       Default empty.
-		 * @param array  $args        Arguments passed to get_avatar_data(), after processing.
+		 * @param array $args Arguments passed to get_avatar_data(), after processing.
 		 */
 //		return apply_filters( 'get_avatar', $avatar, $id_or_email, $args['size'], $args['default'], $args['alt'], $args );
 		return $avatar;

@@ -8,6 +8,7 @@
 namespace Testeleven\LetterAvatars;
 
 $letter_avatars = new \Testeleven\LetterAvatars\LetterAvatars();
+require_once( ABSPATH . 'wp-admin/includes/file.php' );
 
 class LetterAvatars {
 
@@ -15,6 +16,19 @@ class LetterAvatars {
 		add_filter( 'get_avatar', array( $this, 'get_avatar_letter_or_gravatar' ), 10, 6 );
 		add_action( 'user_register', array( $this, 'generate_default_avatar' ) );
 		add_action( 'wp_login', array( $this, 'check_for_avatar' ), 10, 2 );
+		add_action( 'show_user_profile', array( $this, 'avatar_field' ) );
+		add_action( 'edit_user_profile', array( $this, 'avatar_field' ) );
+		add_action( 'personal_options_update', array( $this, 'save_custom_avatar_field' ) );
+		add_action( 'edit_user_profile_update', array( $this, 'save_custom_avatar_field' ) );
+		add_action( 'user_edit_form_tag', array( $this, 'make_form_accept_uploads' ) );
+	}
+
+	public function init() {
+
+	}
+
+	function make_form_accept_uploads() {
+		echo ' enctype="multipart/form-data"';
 	}
 
 	public function check_for_avatar( $username, $user ) {
@@ -27,7 +41,11 @@ class LetterAvatars {
 		$base_avatar_url = $this->get_raw_avatar_url( $user_id );
 		$user_name       = $this->get_user_data( $user_id )['user_name'];
 		$base_image      = imagecreatefrompng( $base_avatar_url );
-		imagefilter( $base_image, IMG_FILTER_COLORIZE, rand( 100, 255 ), rand( 100, 255 ), rand( 100, 255 ) );
+		$red             = rand( 0, 255 );
+		$green           = rand( 255 - $red, 255 );
+		$blue            = rand( 255 - $green, 255 );
+		imagefilter( $base_image, IMG_FILTER_COLORIZE, $red, $green, $blue );
+		// The third parameter compresses the image
 		imagepng( $base_image, plugin_dir_path( __FILE__ ) . "assets/user-avatars/{$user_name}.png" );
 		imagedestroy( $base_image );
 	}
@@ -57,9 +75,9 @@ class LetterAvatars {
 	}
 
 	protected function get_user_email_hash( $id ) {
-			$user_data = $this->get_user_data( $id );
+		$user_data = $this->get_user_data( $id );
 
-			return md5( strtolower( trim( $user_data['email'] ) ) );
+		return md5( strtolower( trim( $user_data['email'] ) ) );
 	}
 
 	protected function get_gravatar_url( $id ) {
@@ -89,7 +107,7 @@ class LetterAvatars {
 	protected function get_id( $id_or_email ) {
 		if ( is_email( $id_or_email ) ) {
 			$user = get_user_by( 'email', $id_or_email );
-			$id = $user->ID;
+			$id   = $user->ID;
 		} elseif ( is_a( $id_or_email, '\WP_User' ) ) {
 			$id = $id_or_email->ID;
 		} else {
@@ -217,4 +235,69 @@ class LetterAvatars {
 //		return apply_filters( 'get_avatar', $avatar, $id_or_email, $args['size'], $args['default'], $args['alt'], $args );
 		return $avatar;
 	}
+
+	/**
+	 * Photo upload
+	 */
+	public function avatar_field( $user ) { ?>
+		<h3>Custom Avatar</h3>
+
+		<table>
+			<tr>
+				<th><label for="testeleven_custom_avatar">Custom Avatar URL</label></th>
+				<td class="testeleven-custom-avatar">
+					<div class="testeleven-custom-avatar-image">
+						<?php $avatar = get_user_meta( wp_get_current_user()->ID, 'testeleven_custom_avatar', true ); ?>
+						<?php
+						if ( $avatar ) {
+							echo '<img src="' . $avatar['url'] . '" width="50" height="50">';
+						}
+
+						?>
+					</div>
+				</td>
+				<td>
+					<input type="file" accept="image/*" name="image" id="testeleven_custom_avatar"
+					       value="">
+					<span>Type in the URL of the image you'd like to use as your avatar</span>
+				</td>
+			</tr>
+		</table>
+
+		<?php
+
+	}
+
+	function save_custom_avatar_field( $user_id ) {
+		if ( ! current_user_can( 'edit_user', $user_id ) ) {
+			return false;
+		}
+
+		$upload           = ( $_FILES['image'] );
+		$upload_overrides = array( 'test_form' => false );
+		$moved            = wp_handle_upload( $upload, $upload_overrides );
+		if ( $moved && ! isset( $moved['error'] ) ) {
+			update_user_meta( $user_id, 'testeleven_custom_avatar', $moved );
+
+//			$this->resize( $moved );
+//			$this->add_to_sprite_sheet( $moved );
+
+		}
+	}
+
+	protected function resize( $image_data ) {
+		$image = wp_get_image_editor( $image_data['url'] );
+		$image->resize( 50, 50, true );
+		$image->save( 'testimg.jpg' );
+	}
+
+	protected function add_to_sprite_sheet( $image_data ) {
+		$background = imagecreatetruecolor( 50, 100 );
+		$avatar_url = $image_data['url'];
+		$tmp = imagecreatefromjpeg( $avatar_url );
+		imagecopy( $background, $tmp, 0, 0, 0, 0, 50, 50 );
+		imagedestroy( $tmp );
+		imagejpeg( $background, plugin_dir_path( __FILE__ ) . "assets/user-avatars/sprites.jpg" );
+	}
 }
+
